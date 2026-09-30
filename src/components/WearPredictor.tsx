@@ -11,6 +11,7 @@ type Inputs = {
 
 type Result = {
   wear: number; // mm flank wear (VB)
+  wearRate: number; // mm flank wear per minute of cutting
   rul: number; // remaining useful life, min
   status: "healthy" | "monitor" | "replace";
   confidence: number;
@@ -41,7 +42,7 @@ function predict(inp: Inputs): Result {
   const status: Result["status"] = wear >= vbLimit ? "replace" : wear >= vbLimit * 0.7 ? "monitor" : "healthy";
   const confidence = Math.max(82, Math.min(98, 96 - Math.abs(inp.vibration - 3) * 1.2));
 
-  return { wear, rul, status, confidence };
+  return { wear, wearRate, rul, status, confidence };
 }
 
 const STATUS_STYLE = {
@@ -177,6 +178,26 @@ export function WearPredictor() {
             <p className="font-mono-data mt-1 text-2xl font-semibold text-foreground">
               {result.confidence.toFixed(1)}
               <span className="ml-1 text-sm font-normal text-muted-foreground">%</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-border bg-secondary/30 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Model formula · Taylor-style wear law
+          </p>
+          <div className="font-mono-data space-y-2 text-xs leading-relaxed">
+            <p className="text-foreground/90">
+              VB = 0.0011 · (n/6000)<sup>1.8</sup> · (f/0.25)<sup>1.1</sup> · (a<sub>p</sub>/1.5)<sup>0.8</sup> · (0.6 + 0.4·(v/3)<sup>1.4</sup>) · t
+            </p>
+            <p className="text-primary">
+              wear rate = {result.wearRate.toFixed(5)} mm/min → VB = {result.wear.toFixed(3)} mm
+            </p>
+            <p className="text-primary">
+              RUL = (0.30 − VB) / wear rate = {result.rul > 480 ? "480+" : Math.round(result.rul)} min
+            </p>
+            <p className="text-muted-foreground">
+              n = {inputs.spindleSpeed} rpm · f = {inputs.feedRate} mm/rev · a<sub>p</sub> = {inputs.depthOfCut} mm · v = {inputs.vibration} mm/s · t = {inputs.cuttingTime} min
             </p>
           </div>
         </div>
