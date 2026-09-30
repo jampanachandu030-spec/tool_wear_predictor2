@@ -1,24 +1,17 @@
 # Tool Wear Predictor
 
-cnc tool wear prediction using ml creating website
+This repository is organized into three areas:
 
-This project was built with [Lovable](https://lovable.dev).
+- `frontend/`: the existing Vite, React, and TanStack Start application.
+- `backend/`: reserved for API endpoints and server-side business logic. No standalone backend is implemented yet.
+- `database/`: reserved for database schemas, migrations, and seed data. No database is configured yet.
 
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/d88774a8-771d-4f11-80c8-f8f527437617).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+## Run the frontend
 
 ```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
+cd frontend
+npm ci
 npm run dev
 ```
+
+See [frontend/README.md](frontend/README.md) for project-specific setup notes.
