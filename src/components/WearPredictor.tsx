@@ -182,6 +182,26 @@ export function WearPredictor() {
           </div>
         </div>
 
+        <div className="mt-4 rounded-lg border border-border bg-secondary/30 p-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Model formula · Taylor-style wear law
+          </p>
+          <div className="font-mono-data space-y-2 text-xs leading-relaxed">
+            <p className="text-foreground/90">
+              VB = 0.0011 · (n/6000)<sup>1.8</sup> · (f/0.25)<sup>1.1</sup> · (a<sub>p</sub>/1.5)<sup>0.8</sup> · (0.6 + 0.4·(v/3)<sup>1.4</sup>) · t
+            </p>
+            <p className="text-primary">
+              wear rate = {result.wearRate.toFixed(5)} mm/min → VB = {result.wear.toFixed(3)} mm
+            </p>
+            <p className="text-primary">
+              RUL = (0.30 − VB) / wear rate = {result.rul > 480 ? "480+" : Math.round(result.rul)} min
+            </p>
+            <p className="text-muted-foreground">
+              n = {inputs.spindleSpeed} rpm · f = {inputs.feedRate} mm/rev · a<sub>p</sub> = {inputs.depthOfCut} mm · v = {inputs.vibration} mm/s · t = {inputs.cuttingTime} min
+            </p>
+          </div>
+        </div>
+
         <div className="mt-auto pt-6">
           <div className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-4">
             <Activity className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
