@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { Activity, Gauge, RotateCw, Timer, Waves, ArrowDownUp } from "lucide-react";
+import { useMemo, useState, useEffect } from "react";
+import { Activity, Gauge, RotateCw, Timer, Waves, ArrowDownUp, Sparkles, Check } from "lucide-react";
+import { useAi } from "../context/AiContext";
 
 type Inputs = {
   spindleSpeed: number; // rpm
@@ -95,6 +96,8 @@ function SliderRow({
 }
 
 export function WearPredictor() {
+  const { updateTelemetry, externalInputs, clearExternalInputs, openAiChat } = useAi();
+
   const [inputs, setInputs] = useState<Inputs>({
     spindleSpeed: 6000,
     feedRate: 0.2,
@@ -103,7 +106,27 @@ export function WearPredictor() {
     cuttingTime: 90,
   });
 
+  const [aiAppliedNotification, setAiAppliedNotification] = useState(false);
+
+  // Apply external inputs when AI optimizes parameters or changes preset
+  useEffect(() => {
+    if (externalInputs) {
+      setInputs(externalInputs);
+      clearExternalInputs();
+      setAiAppliedNotification(true);
+      const timer = setTimeout(() => setAiAppliedNotification(false), 3500);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [externalInputs, clearExternalInputs]);
+
   const result = useMemo(() => predict(inputs), [inputs]);
+
+  // Sync to global AI context
+  useEffect(() => {
+    updateTelemetry(inputs, result);
+  }, [inputs, result, updateTelemetry]);
+
   const wearPct = Math.min(100, (result.wear / 0.6) * 100);
   const status = STATUS_STYLE[result.status];
 
@@ -128,11 +151,27 @@ export function WearPredictor() {
 
       {/* Output */}
       <div className="flex flex-col rounded-xl border border-border bg-card p-6">
-        <div className="mb-6 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Prediction</h3>
-          <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${status.classes}`}>
-            {status.label}
-          </span>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-semibold">Prediction</h3>
+            {aiAppliedNotification && (
+              <span className="font-mono-data inline-flex items-center gap-1 rounded-full bg-primary/20 px-2 py-0.5 text-[10px] font-semibold text-primary animate-pulse">
+                <Check className="h-3 w-3" /> AI Optimized
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => openAiChat("Diagnose current tool wear telemetry and recommend parameter adjustments")}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary hover:bg-primary hover:text-primary-foreground transition-all"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Ask AI Copilot
+            </button>
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${status.classes}`}>
+              {status.label}
+            </span>
+          </div>
         </div>
 
         <div className="mb-6">

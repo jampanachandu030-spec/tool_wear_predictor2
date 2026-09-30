@@ -11,6 +11,10 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { AiProvider } from "../context/AiContext";
+import { AiCustomerChat } from "../components/AiCustomerChat";
+import { PilotConsultationModal } from "../components/PilotConsultationModal";
+import { Toaster } from "../components/ui/sonner";
 
 function NotFoundComponent() {
   return (
@@ -125,8 +129,13 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <AiProvider>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+        <AiCustomerChat />
+        <PilotConsultationModal />
+        <Toaster position="top-right" richColors />
+      </AiProvider>
     </QueryClientProvider>
   );
 }

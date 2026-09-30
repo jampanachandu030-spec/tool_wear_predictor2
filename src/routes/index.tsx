@@ -5,6 +5,7 @@ import {
   LineChart,
   RadioTower,
   ShieldCheck,
+  Sparkles,
   TimerReset,
   Wrench,
   Zap,
@@ -12,6 +13,7 @@ import {
 import heroImage from "@/assets/cnc-hero.jpg";
 import { WearPredictor } from "@/components/WearPredictor";
 import { WearChart } from "@/components/WearChart";
+import { AiCustomerHub } from "@/components/AiCustomerHub";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -113,14 +115,27 @@ function Index() {
           <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
             <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
             <a href="#demo" className="transition-colors hover:text-foreground">Live demo</a>
+            <a href="#ai-hub" className="transition-colors hover:text-foreground flex items-center gap-1.5">
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              AI Advisor & ROI
+            </a>
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
           </nav>
-          <a
-            href="#demo"
-            className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            Try the predictor
-          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href="#ai-hub"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-primary" />
+              AI Copilot
+            </a>
+            <a
+              href="#demo"
+              className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              Try the predictor
+            </a>
+          </div>
         </div>
       </header>
 
@@ -146,6 +161,13 @@ function Index() {
                 className="glow-amber rounded-md bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
               >
                 Run a live prediction
+              </a>
+              <a
+                href="#ai-hub"
+                className="inline-flex items-center gap-2 rounded-md border border-primary/40 bg-primary/10 px-6 py-3 text-sm font-semibold text-primary hover:bg-primary hover:text-primary-foreground transition-all"
+              >
+                <Sparkles className="h-4 w-4" />
+                AI Machining Advisor
               </a>
               <a
                 href="#how"
@@ -231,6 +253,9 @@ function Index() {
         </div>
       </section>
 
+      {/* AI Machining Advisor & Customer Solutions Hub */}
+      <AiCustomerHub />
+
       {/* Features */}
       <section id="features" className="mx-auto max-w-6xl px-6 py-24">
         <p className="font-mono-data text-xs tracking-widest text-primary">CAPABILITIES</p>
@@ -258,12 +283,21 @@ function Index() {
           <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
             Deploy EdgeWear on one machine, prove the savings, then scale to the whole fleet.
           </p>
-          <a
-            href="#demo"
-            className="glow-amber mt-8 inline-block rounded-md bg-primary px-8 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
-          >
-            Start with the live demo
-          </a>
+          <div className="mt-8 flex flex-wrap justify-center gap-4">
+            <a
+              href="#demo"
+              className="glow-amber inline-block rounded-md bg-primary px-8 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              Start with the live demo
+            </a>
+            <a
+              href="#ai-hub"
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-8 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
+            >
+              <Sparkles className="h-4 w-4 text-primary" />
+              Consult AI Machining Advisor
+            </a>
+          </div>
         </div>
       </section>
 
