@@ -15,9 +15,9 @@ export function WearChart() {
   const data = useMemo(() => {
     const points = [];
     for (let t = 0; t <= 240; t += 10) {
-      const toolA = 0.3 * (1 - Math.exp(-t / 95)) + 0.0004 * t;
-      const toolB = 0.3 * (1 - Math.exp(-t / 150)) + 0.0002 * t;
-      const toolC = 0.3 * (1 - Math.exp(-t / 60)) + 0.0009 * t;
+      const toolA = 0.28 * (1 - Math.exp(-t / 110)) + 0.0006 * t;
+      const toolB = 0.26 * (1 - Math.exp(-t / 170)) + 0.0004 * t;
+      const toolC = 0.3 * (1 - Math.exp(-t / 55)) + 0.0012 * t;
       points.push({
         time: t,
         "Tool A — finishing": Number(toolA.toFixed(3)),
@@ -79,9 +79,9 @@ export function WearChart() {
             strokeDasharray="6 4"
             label={{ value: "VB limit 0.30", position: "insideTopRight", fill: "oklch(0.63 0.22 25)", fontSize: 11 }}
           />
-          <Area type="monotone" dataKey="Tool A — finishing" stroke="oklch(0.78 0.16 75)" strokeWidth={2} fill="url(#gA)" />
-          <Area type="monotone" dataKey="Tool B — roughing" stroke="oklch(0.72 0.16 155)" strokeWidth={2} fill="url(#gB)" />
-          <Area type="monotone" dataKey="Tool C — high speed" stroke="oklch(0.63 0.22 25)" strokeWidth={2} fill="url(#gC)" />
+          <Area isAnimationActive={false} type="monotone" dataKey="Tool A — finishing" stroke="oklch(0.78 0.16 75)" strokeWidth={2} fill="url(#gA)" />
+          <Area isAnimationActive={false} type="monotone" dataKey="Tool B — roughing" stroke="oklch(0.72 0.16 155)" strokeWidth={2} fill="url(#gB)" />
+          <Area isAnimationActive={false} type="monotone" dataKey="Tool C — high speed" stroke="oklch(0.63 0.22 25)" strokeWidth={2} fill="url(#gC)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>
