@@ -11,6 +11,7 @@ type Inputs = {
 
 type Result = {
   wear: number; // mm flank wear (VB)
+  wearRate: number; // mm flank wear per minute of cutting
   rul: number; // remaining useful life, min
   status: "healthy" | "monitor" | "replace";
   confidence: number;
@@ -41,7 +42,7 @@ function predict(inp: Inputs): Result {
   const status: Result["status"] = wear >= vbLimit ? "replace" : wear >= vbLimit * 0.7 ? "monitor" : "healthy";
   const confidence = Math.max(82, Math.min(98, 96 - Math.abs(inp.vibration - 3) * 1.2));
 
-  return { wear, rul, status, confidence };
+  return { wear, wearRate, rul, status, confidence };
 }
 
 const STATUS_STYLE = {
