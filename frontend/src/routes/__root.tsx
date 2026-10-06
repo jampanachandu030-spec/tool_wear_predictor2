@@ -12,6 +12,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AiProvider } from "../context/AiContext";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 import { AiCustomerChat } from "../components/AiCustomerChat";
 import { PilotConsultationModal } from "../components/PilotConsultationModal";
 import { Toaster } from "../components/ui/sonner";
@@ -129,13 +130,26 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AiProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
-        <AiCustomerChat />
-        <PilotConsultationModal />
-        <Toaster position="top-right" richColors />
-      </AiProvider>
+      <AuthProvider>
+        <AiProvider>
+          {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+          <Outlet />
+          <AuthenticatedOverlays />
+          <Toaster position="top-right" richColors />
+        </AiProvider>
+      </AuthProvider>
     </QueryClientProvider>
+  );
+}
+
+function AuthenticatedOverlays() {
+  const { isAuthenticated, isLoading } = useAuth();
+  if (isLoading || !isAuthenticated) return null;
+
+  return (
+    <>
+      <AiCustomerChat />
+      <PilotConsultationModal />
+    </>
   );
 }

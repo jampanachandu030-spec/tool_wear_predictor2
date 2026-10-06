@@ -9,11 +9,15 @@ import {
   TimerReset,
   Wrench,
   Zap,
+  LogOut,
 } from "lucide-react";
 import heroImage from "@/assets/cnc-hero.jpg";
 import { WearPredictor } from "@/components/WearPredictor";
 import { WearChart } from "@/components/WearChart";
 import { AiCustomerHub } from "@/components/AiCustomerHub";
+import { AuthPage } from "@/components/AuthPage";
+import { useAuth } from "@/context/AuthContext";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -101,6 +105,28 @@ const STATS = [
 ];
 
 function Index() {
+  const { user, isAuthenticated, isLoading, signOut } = useAuth();
+
+  // Initial client hydration check
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg animate-pulse mb-4">
+          <Cog className="h-6 w-6 animate-spin" />
+        </div>
+        <p className="font-mono-data text-xs text-muted-foreground tracking-wider">
+          INITIALIZING EDGEWEAR GATEWAY...
+        </p>
+      </div>
+    );
+  }
+
+  // If unauthenticated, show the Sign In & Sign Up authentication page
+  if (!isAuthenticated) {
+    return <AuthPage />;
+  }
+
+  // Authenticated: Render full CNC Tool Wear Dashboard
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Nav */}
@@ -122,9 +148,46 @@ function Index() {
             <a href="#features" className="transition-colors hover:text-foreground">Features</a>
           </nav>
           <div className="flex items-center gap-3">
+            {/* Operator Status Badge */}
+            <div className="hidden sm:flex items-center gap-2 rounded-md border border-border bg-card/90 px-2.5 py-1 text-xs">
+              <span className="h-2 w-2 rounded-full bg-success animate-pulse" />
+              <div className="flex flex-col">
+                <span className="font-semibold text-foreground font-mono-data leading-none">
+                  {user?.username}
+                </span>
+                <span className="text-[10px] text-muted-foreground font-mono-data leading-tight">
+                  {user?.email}
+                </span>
+              </div>
+            </div>
+
+            {/* Sign Out Action Button */}
+            <button
+              type="button"
+              id="btn-sign-out"
+              onClick={() => {
+                void signOut().then((success) => {
+                  if (success) {
+                    toast.info("Signed out successfully", {
+                      description: "Returned to EdgeWear authentication portal.",
+                    });
+                  } else {
+                    toast.error("Sign out failed", {
+                      description: "Your session is still active. Please try again.",
+                    });
+                  }
+                });
+              }}
+              title="Sign out of current operator session"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              <span>Sign Out</span>
+            </button>
+
             <a
               href="#ai-hub"
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors"
+              className="hidden lg:inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-accent transition-colors"
             >
               <Sparkles className="h-3.5 w-3.5 text-primary" />
               AI Copilot

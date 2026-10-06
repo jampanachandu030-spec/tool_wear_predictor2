@@ -298,7 +298,8 @@ export function AiCustomerHub() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* Tab 2: ROI Calculator */}
         {activeTab === "roi" && (
@@ -423,7 +424,15 @@ export function AiCustomerHub() {
         )}
 
         {/* Tab 3: CNC Controller Compatibility */}
-        {activeTab === "compatibility" && (
+        {activeTab === "compatibility" && (() => {
+          const currentSpec = CONTROLLER_SPECS[selectedBrand] ?? {
+            protocol: "Standard Ethernet / RS-232",
+            speed: "10 ms cycle",
+            method: "Direct Network Interface",
+            status: "Certified Plug & Play",
+            details: "Standard industrial CNC controller integration.",
+          };
+          return (
           <div className="grid gap-8 lg:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-6 lg:col-span-1">
               <h3 className="text-base font-semibold mb-2">Supported CNC Controllers</h3>
@@ -446,7 +455,7 @@ export function AiCustomerHub() {
                     >
                       <span>{brand} CNC</span>
                       <span className="font-mono-data text-[10px] text-primary">
-                        {CONTROLLER_SPECS[brand].speed}
+                        {CONTROLLER_SPECS[brand]?.speed}
                       </span>
                     </button>
                   );
@@ -459,7 +468,7 @@ export function AiCustomerHub() {
                 <div className="flex items-center justify-between mb-4">
                   <div>
                     <span className="font-mono-data text-xs text-success font-semibold">
-                      {CONTROLLER_SPECS[selectedBrand].status}
+                      {currentSpec.status}
                     </span>
                     <h3 className="text-2xl font-bold mt-1">{selectedBrand} Controller Integration</h3>
                   </div>
@@ -470,21 +479,21 @@ export function AiCustomerHub() {
                   <div className="rounded-lg border border-border bg-secondary/30 p-3">
                     <p className="text-[11px] text-muted-foreground">Supported Communication Protocol</p>
                     <p className="font-mono-data text-xs font-semibold text-foreground mt-1">
-                      {CONTROLLER_SPECS[selectedBrand].protocol}
+                      {currentSpec.protocol}
                     </p>
                   </div>
 
                   <div className="rounded-lg border border-border bg-secondary/30 p-3">
                     <p className="text-[11px] text-muted-foreground">Hardware Interconnect Method</p>
                     <p className="font-mono-data text-xs font-semibold text-foreground mt-1">
-                      {CONTROLLER_SPECS[selectedBrand].method}
+                      {currentSpec.method}
                     </p>
                   </div>
                 </div>
 
                 <div className="rounded-lg border border-border bg-secondary/20 p-4 text-xs leading-relaxed text-muted-foreground">
                   <p className="font-semibold text-foreground mb-2">Technical Specification:</p>
-                  <p>{CONTROLLER_SPECS[selectedBrand].details}</p>
+                  <p>{currentSpec.details}</p>
                 </div>
               </div>
 
@@ -499,7 +508,7 @@ export function AiCustomerHub() {
                 <button
                   onClick={() =>
                     openAiChat(
-                      `How does EdgeWear connect to our ${selectedBrand} CNC controller via ${CONTROLLER_SPECS[selectedBrand].protocol}?`
+                      `How does EdgeWear connect to our ${selectedBrand} CNC controller via ${currentSpec.protocol}?`
                     )
                   }
                   className="glow-amber inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90 transition-opacity"
@@ -510,7 +519,8 @@ export function AiCustomerHub() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
       </div>
     </section>
   );

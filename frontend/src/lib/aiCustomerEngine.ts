@@ -448,7 +448,10 @@ EdgeWear is designed for **non-invasive, zero-downtime deployment** across brown
     queryLower.includes("material")
   ) {
     const targetMat =
-      Object.keys(MATERIALS_DATABASE).find((m) => queryLower.includes(m.toLowerCase().split(" ")[0])) || material;
+      Object.keys(MATERIALS_DATABASE).find((m) => {
+        const token = m.toLowerCase().split(" ")[0] ?? "";
+        return token.length > 0 && queryLower.includes(token);
+      }) || material;
     const spec = getMaterialSpec(targetMat);
 
     const text = `### 🔬 Machining Parameters & Tooling Guide: ${spec.name}
