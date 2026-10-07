@@ -57,10 +57,11 @@ export function AiCustomerChat() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKey, setApiKey] = useState(() => {
+    const envKey = import.meta.env.VITE_GEMINI_API_KEY ?? "";
     if (typeof window !== "undefined") {
-      return localStorage.getItem("edgewear_gemini_key") || "";
+      return localStorage.getItem("edgewear_gemini_key") || envKey;
     }
-    return "";
+    return envKey;
   });
   const [tempApiKey, setTempApiKey] = useState(apiKey);
   const [copiedId, setCopiedId] = useState<string | null>(null);

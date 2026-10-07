@@ -244,6 +244,45 @@ export function calculateFleetRoi(fleetSize: number, monthlyScrapRatePct: number
   };
 }
 
+function buildWebsiteGroundingContext(material: string) {
+  const materialFacts = Object.entries(MATERIALS_DATABASE)
+    .map(([name, spec]) => {
+      return `- ${name}: ${spec.category}; speed ${spec.optimalSpeedRange[0]}-${spec.optimalSpeedRange[1]} RPM; feed ${spec.optimalFeedRange[0]}-${spec.optimalFeedRange[1]} mm/rev; depth ${spec.optimalDepthRange[0]}-${spec.optimalDepthRange[1]} mm; main wear: ${spec.criticalFailureMode}; coating: ${spec.recommendedCoating}; tip: ${spec.tips}`;
+    })
+    .join("\n");
+
+  return `You are EdgeWear AI Copilot. Answer ONLY using the facts below from this EdgeWear website and the current browser telemetry. Do not use outside internet facts or general knowledge. If the user asks something outside the website context, say that you can answer only based on EdgeWear data and site details.
+
+Website facts:
+- Product: EdgeWear is a CNC tool wear prediction and condition monitoring portal.
+- Core value: real-time tool wear prediction, remaining useful life (RUL), sensor telemetry analytics, and tool-life optimization.
+- Supported materials and key machining guidance:
+${materialFacts}
+- Current default material context: ${material}.
+- EdgeWear supports machining data for 4140 steel, Inconel 718, Ti-6Al-4V, 6061-T6 aluminum, and 316L stainless steel.
+- The ISO 3685 flank wear limit is 0.30 mm.
+- EdgeWear can diagnose tool wear, recommend optimized spindle speed/feed/depth, estimate ROI, and verify controller compatibility.
+- Supported CNC controllers include Fanuc, Haas, Siemens, Heidenhain, Mazak, DMG Mori, Okuma via Ethernet, MTConnect, OPC UA, and FOCAS interfaces.
+- The EdgeWear gateway is designed for industrial edge deployment with low-latency inference and integrates to MES/SCADA.
+- EdgeWear uses a built-in high-fidelity machining domain engine and optional Google Gemini for conversational reasoning only when grounded by the site context.
+
+Current browser telemetry:
+- Material: ${material}
+- Spindle Speed: ${telemetry.inputs.spindleSpeed} RPM
+- Feed Rate: ${telemetry.inputs.feedRate} mm/rev
+- Depth of Cut: ${telemetry.inputs.depthOfCut} mm
+- Vibration: ${telemetry.inputs.vibration} mm/s RMS
+- Cutting Time: ${telemetry.inputs.cuttingTime} min
+- Calculated Flank Wear (VB): ${telemetry.result.wear.toFixed(3)} mm
+- Remaining Useful Life: ${telemetry.result.rul.toFixed(0)} min
+- Wear Rate: ${telemetry.result.wearRate.toFixed(4)} mm/min
+- Status: ${telemetry.result.status}
+
+User question: ${userQuery}
+
+Answer concisely, in a professional engineering tone, using only the provided EdgeWear website facts and the current telemetry. Include practical action steps when appropriate.`;
+}
+
 export async function generateAiResponse(
   userQuery: string,
   telemetry: { inputs: MachineInputs; result: PredictionResult },
@@ -253,6 +292,7 @@ export async function generateAiResponse(
   // If user provided a Gemini API Key, we can query Gemini via REST API
   if (customApiKey && customApiKey.trim().length > 10) {
     try {
+      const groundedPrompt = buildWebsiteGroundingContext(material);
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${customApiKey.trim()}`,
         {
@@ -262,28 +302,14 @@ export async function generateAiResponse(
             contents: [
               {
                 role: "user",
-                parts: [
-                  {
-                    text: `You are EdgeWear AI, an expert industrial CNC machining copilot and tool-wear diagnostic specialist.
-Current machine telemetry:
-- Material: ${material}
-- Spindle Speed: ${telemetry.inputs.spindleSpeed} RPM
-- Feed Rate: ${telemetry.inputs.feedRate} mm/rev
-- Depth of Cut: ${telemetry.inputs.depthOfCut} mm
-- Vibration: ${telemetry.inputs.vibration} mm/s RMS
-- Cutting Time: ${telemetry.inputs.cuttingTime} min
-- Calculated Flank Wear (VB): ${telemetry.result.wear.toFixed(3)} mm (ISO 3685 limit: 0.30 mm)
-- Remaining Useful Life: ${telemetry.result.rul.toFixed(0)} min
-- Wear Rate: ${telemetry.result.wearRate.toFixed(4)} mm/min
-- Status: ${telemetry.result.status}
-
-User Query: "${userQuery}"
-
-Provide a concise, professional engineering response with actionable parameters and clear rationale. Keep it structured with markdown.`,
-                  },
-                ],
+                parts: [{ text: groundedPrompt }],
               },
             ],
+            generationConfig: {
+              temperature: 0.2,
+              topP: 0.8,
+              maxOutputTokens: 500,
+            },
           }),
         }
       );
