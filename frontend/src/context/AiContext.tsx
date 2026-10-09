@@ -73,6 +73,25 @@ const defaultResult: PredictionResult = {
   confidence: 96.2,
 };
 
+const defaultAiContext: AiContextType = {
+  telemetry: { inputs: defaultInputs, result: defaultResult },
+  updateTelemetry: () => undefined,
+  externalInputs: null,
+  applyRecommendedParameters: () => undefined,
+  clearExternalInputs: () => undefined,
+  isAiOpen: false,
+  setIsAiOpen: () => undefined,
+  openAiChat: () => undefined,
+  pendingPrompt: null,
+  clearPendingPrompt: () => undefined,
+  pilotModalOpen: false,
+  setPilotModalOpen: () => undefined,
+  pilotRequests: [],
+  submitPilotRequest: () => undefined,
+  activeMaterial: "4140 Alloy Steel",
+  setActiveMaterial: () => undefined,
+};
+
 const AiContext = createContext<AiContextType | undefined>(undefined);
 
 export function AiProvider({ children }: { children: ReactNode }) {
@@ -147,8 +166,5 @@ export function AiProvider({ children }: { children: ReactNode }) {
 
 export function useAi() {
   const context = useContext(AiContext);
-  if (!context) {
-    throw new Error("useAi must be used within an AiProvider");
-  }
-  return context;
+  return context ?? defaultAiContext;
 }

@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useState, type ChangeEvent, type FormEvent } from "react";
 import {
   BrainCircuit,
   Cog,
@@ -10,13 +11,16 @@ import {
   Wrench,
   Zap,
   LogOut,
+  UserRound,
+  Camera,
 } from "lucide-react";
 import heroImage from "@/assets/cnc-hero.jpg";
 import { WearPredictor } from "@/components/WearPredictor";
 import { WearChart } from "@/components/WearChart";
 import { AiCustomerHub } from "@/components/AiCustomerHub";
 import { AuthPage } from "@/components/AuthPage";
-import { useAuth } from "@/context/AuthContext";
+import { AuthProvider, useAuth, type UserProfile } from "@/context/AuthContext";
+import { AiProvider } from "@/context/AiContext";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
@@ -28,7 +32,10 @@ export const Route = createFileRoute("/")({
         content:
           "Predict CNC tool wear in real time with machine learning. Monitor flank wear, estimate remaining useful life, and schedule tool changes before scrap happens.",
       },
-      { property: "og:title", content: "EdgeWear — CNC Tool Wear Prediction with Machine Learning" },
+      {
+        property: "og:title",
+        content: "EdgeWear — CNC Tool Wear Prediction with Machine Learning",
+      },
       {
         property: "og:description",
         content:
@@ -105,7 +112,18 @@ const STATS = [
 ];
 
 function Index() {
+  return (
+    <AuthProvider>
+      <AiProvider>
+        <IndexContent />
+      </AiProvider>
+    </AuthProvider>
+  );
+}
+
+function IndexContent() {
   const { user, isAuthenticated, isLoading, signOut } = useAuth();
+  const [showProfile, setShowProfile] = useState(false);
 
   // Initial client hydration check
   if (isLoading) {
@@ -117,6 +135,262 @@ function Index() {
         <p className="font-mono-data text-xs text-muted-foreground tracking-wider">
           INITIALIZING EDGEWEAR GATEWAY...
         </p>
+      </div>
+    );
+  }
+
+  function ProfileDialog({ user, onClose }: { user: UserProfile; onClose: () => void }) {
+    const { updateProfile, changePassword } = useAuth();
+    const [username, setUsername] = useState(user.username);
+    const [email, setEmail] = useState(user.email);
+    const [profilePhoto, setProfilePhoto] = useState<string | null>(user.profilePhoto ?? null);
+    const [isSaving, setIsSaving] = useState(false);
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+    const handlePhotoChange = (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = "";
+      if (!file) return;
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        toast.error("Unsupported photo format", {
+          description: "Choose a PNG, JPEG, or WebP image.",
+        });
+        return;
+      }
+      if (file.size > 1024 * 1024) {
+        toast.error("Photo is too large", {
+          description: "Choose an image smaller than 1 MB.",
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") setProfilePhoto(reader.result);
+      };
+      reader.onerror = () => {
+        toast.error("Could not read the selected photo");
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setIsSaving(true);
+      const result = await updateProfile({ username, email, profilePhoto });
+      setIsSaving(false);
+      if (!result.success) {
+        toast.error("Profile update failed", { description: result.error });
+        return;
+      }
+      toast.success("Profile updated");
+      onClose();
+    };
+
+    const handlePasswordChange = async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (newPassword.length < 8) {
+        toast.error("New password must be at least 8 characters.");
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        toast.error("New passwords do not match.");
+        return;
+      }
+      setIsChangingPassword(true);
+      const result = await changePassword({ newPassword });
+      setIsChangingPassword(false);
+      if (!result.success) {
+        toast.error("Password update failed", { description: result.error });
+        return;
+      }
+      toast.success("Password updated. Please sign in again.");
+      onClose();
+    };
+
+    return (
+      <div
+        className="fixed inset-0 z-[70] flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+      >
+        <section
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="profile-dialog-title"
+          className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-6 shadow-2xl sm:p-8"
+        >
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 id="profile-dialog-title" className="text-2xl font-bold">
+                Operator profile
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                View and update your account details.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close profile"
+              className="rounded-md px-2 py-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              ×
+            </button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border bg-secondary text-muted-foreground">
+                {profilePhoto ? (
+                  <img
+                    src={profilePhoto}
+                    alt="Profile preview"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <UserRound className="h-8 w-8" />
+                )}
+              </div>
+              <div className="space-y-2">
+                <label
+                  htmlFor="profile-photo"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium hover:bg-accent"
+                >
+                  <Camera className="h-4 w-4" />
+                  Choose photo
+                </label>
+                <input
+                  id="profile-photo"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={handlePhotoChange}
+                  className="sr-only"
+                />
+                <p className="text-xs text-muted-foreground">PNG, JPEG, or WebP · up to 1 MB</p>
+                {profilePhoto && (
+                  <button
+                    type="button"
+                    onClick={() => setProfilePhoto(null)}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Remove photo
+                  </button>
+                )}
+              </div>
+            </div>
+            <div>
+              <label htmlFor="profile-username" className="mb-1.5 block text-xs font-medium">
+                User name
+              </label>
+              <input
+                id="profile-username"
+                required
+                minLength={3}
+                maxLength={40}
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label htmlFor="profile-email" className="mb-1.5 block text-xs font-medium">
+                Email address
+              </label>
+              <input
+                id="profile-email"
+                type="email"
+                required
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label htmlFor="profile-role" className="mb-1.5 block text-xs font-medium">
+                Shop floor role
+              </label>
+              <input
+                id="profile-role"
+                value={user.role}
+                readOnly
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-muted-foreground"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Roles are managed by an administrator.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg border border-border px-4 py-2.5 text-sm font-medium hover:bg-accent"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : "Save profile"}
+              </button>
+            </div>
+          </form>
+          <form
+            onSubmit={handlePasswordChange}
+            className="mt-6 space-y-4 border-t border-border pt-6"
+          >
+            <div>
+              <h3 className="font-semibold">Change password</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose a new password. You will need to sign in again after it changes.
+              </p>
+            </div>
+            <div>
+              <label htmlFor="profile-new-password" className="mb-1.5 block text-xs font-medium">
+                New password
+              </label>
+              <input
+                id="profile-new-password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="profile-confirm-password"
+                className="mb-1.5 block text-xs font-medium"
+              >
+                Confirm new password
+              </label>
+              <input
+                id="profile-confirm-password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isChangingPassword}
+              className="rounded-lg border border-border px-4 py-2.5 text-sm font-semibold hover:bg-accent disabled:opacity-50"
+            >
+              {isChangingPassword ? "Updating..." : "Update password"}
+            </button>
+          </form>
+        </section>
       </div>
     );
   }
@@ -139,13 +413,22 @@ function Index() {
             <span className="text-lg font-semibold tracking-tight">EdgeWear</span>
           </a>
           <nav className="hidden items-center gap-8 text-sm text-muted-foreground md:flex">
-            <a href="#how" className="transition-colors hover:text-foreground">How it works</a>
-            <a href="#demo" className="transition-colors hover:text-foreground">Live demo</a>
-            <a href="#ai-hub" className="transition-colors hover:text-foreground flex items-center gap-1.5">
+            <a href="#how" className="transition-colors hover:text-foreground">
+              How it works
+            </a>
+            <a href="#demo" className="transition-colors hover:text-foreground">
+              Live demo
+            </a>
+            <a
+              href="#ai-hub"
+              className="transition-colors hover:text-foreground flex items-center gap-1.5"
+            >
               <Sparkles className="h-3.5 w-3.5 text-primary" />
               AI Advisor & ROI
             </a>
-            <a href="#features" className="transition-colors hover:text-foreground">Features</a>
+            <a href="#features" className="transition-colors hover:text-foreground">
+              Features
+            </a>
           </nav>
           <div className="flex items-center gap-3">
             {/* Operator Status Badge */}
@@ -160,6 +443,19 @@ function Index() {
                 </span>
               </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowProfile(true)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+            >
+              {user.profilePhoto ? (
+                <img src={user.profilePhoto} alt="" className="h-6 w-6 rounded-full object-cover" />
+              ) : (
+                <UserRound className="h-3.5 w-3.5" />
+              )}
+              <span>Profile</span>
+            </button>
 
             {/* Sign Out Action Button */}
             <button
@@ -201,6 +497,7 @@ function Index() {
           </div>
         </div>
       </header>
+      {showProfile && user && <ProfileDialog user={user} onClose={() => setShowProfile(false)} />}
 
       {/* Hero */}
       <section id="top" className="relative overflow-hidden">
@@ -215,8 +512,8 @@ function Index() {
               Know your tool's wear before it costs you a part.
             </h1>
             <p className="mt-6 max-w-xl text-lg text-muted-foreground">
-              EdgeWear predicts CNC tool flank wear and remaining useful life in real time —
-              so you change inserts on evidence, not on guesswork.
+              EdgeWear predicts CNC tool flank wear and remaining useful life in real time — so you
+              change inserts on evidence, not on guesswork.
             </p>
             <div className="mt-8 flex flex-wrap gap-4">
               <a

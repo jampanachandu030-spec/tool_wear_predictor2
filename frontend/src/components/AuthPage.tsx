@@ -24,7 +24,7 @@ interface AuthPageProps {
 }
 
 export function AuthPage({ onSuccess }: AuthPageProps) {
-  const { signIn, signUp, authError } = useAuth();
+  const { signIn, signUp, resetPassword, authError } = useAuth();
 
   // Mode: "signin" | "signup"
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -41,6 +41,9 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
   // Status & error states
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isPasswordReset, setIsPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +115,46 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
     } catch (error) {
       console.error("Unexpected EdgeWear authentication error", error);
       setErrorMsg("An unexpected error occurred during authentication.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg(null);
+    if (newPassword.length < 8) {
+      setErrorMsg("Your new password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setErrorMsg("New passwords do not match. Please re-enter them.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await resetPassword({
+        username,
+        email,
+        newPassword,
+      });
+      if (!result.success) {
+        setErrorMsg(result.error ?? "Unable to reset your password.");
+        toast.error("Password reset failed", { description: result.error });
+        return;
+      }
+      setIsPasswordReset(false);
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setPassword("");
+      setMode("signin");
+      toast.success("Password updated", {
+        description: "Your new password is saved. Sign in to continue.",
+      });
+    } catch (error) {
+      console.error("Unexpected EdgeWear password reset error", error);
+      setErrorMsg("Unable to reset your password. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -242,6 +285,7 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                     id="btn-tab-signin"
                     onClick={() => {
                       setMode("signin");
+                      setIsPasswordReset(false);
                       setErrorMsg(null);
                     }}
                     className={`flex items-center justify-center gap-2 py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
@@ -259,6 +303,7 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                     id="btn-tab-signup"
                     onClick={() => {
                       setMode("signup");
+                      setIsPasswordReset(false);
                       setErrorMsg(null);
                     }}
                     className={`flex items-center justify-center gap-2 py-2.5 px-4 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
@@ -276,7 +321,9 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
               {/* Header title for current form */}
               <div className="mb-6">
                 <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-                  {mode === "signin" ? (
+                  {isPasswordReset ? (
+                    <span>Reset Password</span>
+                  ) : mode === "signin" ? (
                     <>
                       <span>Operator Sign In</span>
                       <span className="text-xs font-mono-data font-normal text-primary border border-primary/30 px-2 py-0.5 rounded bg-primary/10">
@@ -293,9 +340,11 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                   )}
                 </h3>
                 <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-                  {mode === "signin"
-                    ? "Enter your User Name, Mail ID, and Password to authenticate to your home page."
-                    : "Create an operator profile with User Name, Mail ID, and Password to access the fleet."}
+                  {isPasswordReset
+                    ? "Enter your account username and email, then choose a new password."
+                    : mode === "signin"
+                      ? "Enter your User Name, Mail ID, and Password to authenticate to your home page."
+                      : "Create an operator profile with User Name, Mail ID, and Password to access the fleet."}
                 </p>
               </div>
 
@@ -306,9 +355,11 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                   <span className="leading-snug">{errorMsg ?? authError}</span>
                 </div>
               )}
-
               {/* The Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
+              <form
+                onSubmit={isPasswordReset ? handleResetPassword : handleSubmit}
+                className="space-y-4"
+              >
                 {/* 1. User Name Input */}
                 <div>
                   <label
@@ -359,43 +410,110 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                   </div>
                 </div>
 
-                {/* 3. Password Input */}
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label
-                      htmlFor="auth-password"
-                      className="block text-xs font-medium text-foreground"
-                    >
-                      Password <span className="text-primary">*</span>
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
-                      <Lock className="h-4 w-4" />
+                {!isPasswordReset && (
+                  <>
+                    {/* 3. Password Input */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1.5">
+                        <label
+                          htmlFor="auth-password"
+                          className="block text-xs font-medium text-foreground"
+                        >
+                          Password <span className="text-primary">*</span>
+                        </label>
+                        {mode === "signin" && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setErrorMsg(null);
+                              setIsPasswordReset(true);
+                              setNewPassword("");
+                              setConfirmNewPassword("");
+                            }}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Reset password
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-muted-foreground">
+                          <Lock className="h-4 w-4" />
+                        </div>
+                        <input
+                          id="auth-password"
+                          type={showPassword ? "text" : "password"}
+                          required
+                          autoComplete={mode === "signin" ? "current-password" : "new-password"}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full pl-9 pr-10 py-2.5 text-sm rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                    <input
-                      id="auth-password"
-                      type={showPassword ? "text" : "password"}
-                      required
-                      autoComplete={mode === "signin" ? "current-password" : "new-password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••••••"
-                      className="w-full pl-9 pr-10 py-2.5 text-sm rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-                    >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
+                  </>
+                )}
+
+                {isPasswordReset && (
+                  <>
+                    <div>
+                      <label
+                        htmlFor="reset-new-password"
+                        className="mb-1.5 block text-xs font-medium text-foreground"
+                      >
+                        New password <span className="text-primary">*</span>
+                      </label>
+                      <input
+                        id="reset-new-password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        minLength={8}
+                        maxLength={256}
+                        required
+                        value={newPassword}
+                        onChange={(event) => setNewPassword(event.target.value)}
+                        placeholder="At least 8 characters"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="reset-confirm-password"
+                        className="mb-1.5 block text-xs font-medium text-foreground"
+                      >
+                        Confirm new password <span className="text-primary">*</span>
+                      </label>
+                      <input
+                        id="reset-confirm-password"
+                        type={showPassword ? "text" : "password"}
+                        autoComplete="new-password"
+                        minLength={8}
+                        maxLength={256}
+                        required
+                        value={confirmNewPassword}
+                        onChange={(event) => setConfirmNewPassword(event.target.value)}
+                        placeholder="Re-enter new password"
+                        className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/60 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </>
+                )}
 
                 {/* 4. Extra fields for Sign Up mode */}
-                {mode === "signup" && (
+                {!isPasswordReset && mode === "signup" && (
                   <>
                     {/* Confirm Password */}
                     <div>
@@ -449,17 +567,19 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                 )}
 
                 {/* Remember Me / Session options */}
-                <div className="flex items-center justify-between text-xs pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded border-border text-primary accent-[oklch(0.78_0.16_75)] focus:ring-primary h-3.5 w-3.5"
-                    />
-                    <span>Keep operator session active on this machine</span>
-                  </label>
-                </div>
+                {!isPasswordReset && (
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded border-border text-primary accent-[oklch(0.78_0.16_75)] focus:ring-primary h-3.5 w-3.5"
+                      />
+                      <span>Keep operator session active on this machine</span>
+                    </label>
+                  </div>
+                )}
 
                 {/* Submit Action Button */}
                 <button
@@ -472,25 +592,45 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                     <div className="flex items-center gap-2">
                       <Cog className="h-4 w-4 animate-spin" />
                       <span>
-                        {mode === "signin" ? "Authenticating Operator..." : "Creating Account..."}
+                        {isPasswordReset
+                          ? "Updating Password..."
+                          : mode === "signin"
+                            ? "Authenticating Operator..."
+                            : "Creating Account..."}
                       </span>
                     </div>
                   ) : (
                     <>
                       <span>
-                        {mode === "signin"
-                          ? "Sign In & Enter Dashboard"
-                          : "Register & Authenticate"}
+                        {isPasswordReset
+                          ? "Reset Password"
+                          : mode === "signin"
+                            ? "Sign In & Enter Dashboard"
+                            : "Register & Authenticate"}
                       </span>
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
                 </button>
+                {isPasswordReset && (
+                  <div className="flex items-center justify-center gap-3 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPasswordReset(false);
+                        setErrorMsg(null);
+                      }}
+                      className="text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      Back to sign in
+                    </button>
+                  </div>
+                )}
               </form>
 
               {/* Demo Quick Fill & Mode Switch Footnotes */}
               <div className="mt-6 pt-5 border-t border-border/80 flex flex-col gap-3">
-                {mode === "signin" ? (
+                {!isPasswordReset && mode === "signin" ? (
                   <div className="flex flex-wrap items-center justify-center gap-2">
                     <p className="text-xs text-muted-foreground">
                       Don't have an account?{" "}
@@ -506,7 +646,7 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                       </button>
                     </p>
                   </div>
-                ) : (
+                ) : !isPasswordReset ? (
                   <div className="text-center">
                     <p className="text-xs text-muted-foreground">
                       Already registered?{" "}
@@ -522,7 +662,7 @@ export function AuthPage({ onSuccess }: AuthPageProps) {
                       </button>
                     </p>
                   </div>
-                )}
+                ) : null}
                 <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
                   Your account is stored securely in the EdgeWear database. Passwords are never
                   stored as plain text.

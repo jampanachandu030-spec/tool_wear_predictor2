@@ -5,6 +5,7 @@ export type UserProfile = {
   username: string;
   email: string;
   role: string;
+  profilePhoto?: string | null;
 };
 
 type AuthResult = { success: boolean; error?: string };
@@ -27,16 +28,41 @@ interface AuthContextType {
     role?: string;
     rememberSession: boolean;
   }) => Promise<AuthResult>;
+  updateProfile: (
+    params: Pick<UserProfile, "username" | "email"> & { profilePhoto: string | null },
+  ) => Promise<AuthResult>;
+  changePassword: (params: { newPassword: string }) => Promise<AuthResult>;
+  resetPassword: (params: {
+    username: string;
+    email: string;
+    newPassword: string;
+  }) => Promise<AuthResult>;
   signOut: () => Promise<boolean>;
 }
 
 const AUTH_API_URL = (import.meta.env["VITE_AUTH_API_URL"] ?? "").replace(/\/$/, "");
 
+const defaultAuthContext: AuthContextType = {
+  user: null,
+  isAuthenticated: false,
+  isLoading: false,
+  authError: null,
+  signIn: async () => ({ success: false, error: "Authentication is unavailable." }),
+  signUp: async () => ({ success: false, error: "Authentication is unavailable." }),
+  updateProfile: async () => ({ success: false, error: "Authentication is unavailable." }),
+  changePassword: async () => ({ success: false, error: "Authentication is unavailable." }),
+  resetPassword: async () => ({
+    success: false,
+    error: "Authentication is unavailable.",
+  }),
+  signOut: async () => false,
+};
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 async function requestAuth<T>(
   path: string,
-  options?: { method?: "GET" | "POST"; body?: Record<string, unknown> },
+  options?: { method?: "GET" | "POST" | "PATCH"; body?: Record<string, unknown> },
 ): Promise<T> {
   let response: Response;
   try {
@@ -83,7 +109,10 @@ function isUserProfile(value: unknown): value is UserProfile {
     "email" in value &&
     typeof value.email === "string" &&
     "role" in value &&
-    typeof value.role === "string"
+    typeof value.role === "string" &&
+    (!("profilePhoto" in value) ||
+      value.profilePhoto === null ||
+      typeof value.profilePhoto === "string")
   );
 }
 
@@ -197,6 +226,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updateProfile = useCallback(
+    async (profile: Pick<UserProfile, "username" | "email"> & { profilePhoto: string | null }) => {
+      try {
+        const result = await requestAuth<{ user: unknown }>("/profile", {
+          method: "PATCH",
+          body: profile,
+        });
+        if (!isUserProfile(result.user)) {
+          throw new Error("The authentication service returned an invalid user profile.");
+        }
+        setUser(result.user);
+        setAuthError(null);
+        return { success: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Unable to update your profile.";
+        setAuthError(message);
+        return { success: false, error: message };
+      }
+    },
+    [],
+  );
+
+  const changePassword = useCallback(async (params: { newPassword: string }) => {
+    try {
+      await requestAuth("/change-password", {
+        method: "POST",
+        body: params,
+      });
+      setUser(null);
+      setAuthError(null);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unable to change your password.",
+      };
+    }
+  }, []);
+
+  const resetPassword = useCallback(
+    async (params: { username: string; email: string; newPassword: string }) => {
+      try {
+        await requestAuth("/reset-password", {
+          method: "POST",
+          body: params,
+        });
+        setUser(null);
+        setAuthError(null);
+        return { success: true };
+      } catch (error) {
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : "Unable to reset your password.",
+        };
+      }
+    },
+    [],
+  );
+
   return (
     <AuthContext.Provider
       value={{
@@ -206,6 +294,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authError,
         signIn,
         signUp,
+        updateProfile,
+        changePassword,
+        resetPassword,
         signOut,
       }}
     >
@@ -216,8 +307,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
-  }
-  return context;
+  return context ?? defaultAuthContext;
 }

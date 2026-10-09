@@ -43,13 +43,14 @@ function createCollection() {
           if ("tokenHash" in query) {
             return (
               document.tokenHash === query.tokenHash &&
-              document.expiresAt > query.expiresAt.$gt
+              (!query.expiresAt?.$gt ||
+                document.expiresAt > query.expiresAt.$gt)
             );
           }
-          if ("_id" in query) return document._id === query._id;
-          return (
-            document.usernameNormalized === query.usernameNormalized &&
-            document.email === query.email
+          return Object.entries(query).every(([key, value]) =>
+            value && typeof value === "object" && "$gt" in value
+              ? document[key] > value.$gt
+              : document[key] === value,
           );
         }) ?? null
       );
@@ -62,6 +63,29 @@ function createCollection() {
       );
       if (index >= 0) documents.splice(index, 1);
       return { deletedCount: index >= 0 ? 1 : 0 };
+    },
+    async deleteMany(query) {
+      const matching = documents.filter((document) =>
+        Object.entries(query).every(([key, value]) => document[key] === value),
+      );
+      for (const document of matching) {
+        documents.splice(documents.indexOf(document), 1);
+      }
+      return { deletedCount: matching.length };
+    },
+    async updateOne(query, update) {
+      const document = documents.find((entry) =>
+        Object.entries(query).every(([key, value]) => entry[key] === value),
+      );
+      if (!document) return { matchedCount: 0, modifiedCount: 0 };
+      Object.assign(document, update.$set ?? {});
+      for (const [key, amount] of Object.entries(update.$inc ?? {})) {
+        document[key] = (document[key] ?? 0) + amount;
+      }
+      for (const key of Object.keys(update.$unset ?? {})) {
+        delete document[key];
+      }
+      return { matchedCount: 1, modifiedCount: 1 };
     },
   };
 }
@@ -216,13 +240,178 @@ describe("MongoDB authentication API", () => {
     assert.equal(users.documents.length, 0);
   });
 
+  it("updates profile details only for a valid signed-in session", async () => {
+    const signup = await post("signup", {
+      username: "profile_operator",
+      email: "profile@example.com",
+      password: PASSWORD,
+      role: "Tooling Engineer",
+    });
+    const cookie = signup.headers.get("set-cookie").split(";")[0];
+    const unauthorized = await fetch(`${baseUrl}/api/auth/profile`, {
+      method: "PATCH",
+      headers: { Origin: FRONTEND_ORIGIN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: "updated_operator",
+        email: "updated@example.com",
+      }),
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/auth/profile`, {
+      method: "PATCH",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: "updated_operator",
+        email: "updated@example.com",
+        profilePhoto: "data:image/png;base64,aGVsbG8=",
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).user, {
+      id: "1",
+      username: "updated_operator",
+      email: "updated@example.com",
+      role: "Tooling Engineer",
+      profilePhoto: "data:image/png;base64,aGVsbG8=",
+    });
+    assert.equal(
+      users.documents[0].profilePhoto,
+      "data:image/png;base64,aGVsbG8=",
+    );
+  });
+
+  it("rejects unsupported or oversized profile photos", async () => {
+    const signup = await post("signup", {
+      username: "photo_operator",
+      email: "photo@example.com",
+      password: PASSWORD,
+    });
+    const cookie = signup.headers.get("set-cookie").split(";")[0];
+    const response = await fetch(`${baseUrl}/api/auth/profile`, {
+      method: "PATCH",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        username: "photo_operator",
+        email: "photo@example.com",
+        profilePhoto: "data:image/svg+xml;base64,PHN2Zz4=",
+      }),
+    });
+    assert.equal(response.status, 400);
+    assert.equal(users.documents[0].profilePhoto, undefined);
+  });
+
+  it("requires an active session to change a password", async () => {
+    const unauthorized = await post("change-password", {
+      username: "signedin_operator",
+      email: "signedin@example.com",
+      recoveryCode: "a".repeat(32),
+      newPassword: "another-safe-password",
+    });
+    assert.equal(unauthorized.status, 401);
+
+    const signup = await post("signup", {
+      username: "signedin_operator",
+      email: "signedin@example.com",
+      password: PASSWORD,
+    });
+    users.documents[0].recoveryCodeHash = "legacy-recovery-hash";
+    const cookie = signup.headers.get("set-cookie").split(";")[0];
+    const response = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      headers: {
+        Origin: FRONTEND_ORIGIN,
+        Cookie: cookie,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        newPassword: "another-safe-password",
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("set-cookie"), /Max-Age=0/);
+    assert.equal(sessions.documents.length, 0);
+    assert.equal(users.documents[0].recoveryCodeHash, undefined);
+
+    const oldPassword = await post("signin", {
+      username: "signedin_operator",
+      email: "signedin@example.com",
+      password: PASSWORD,
+    });
+    const newPassword = await post("signin", {
+      username: "signedin_operator",
+      email: "signedin@example.com",
+      password: "another-safe-password",
+    });
+    assert.equal(oldPassword.status, 401);
+    assert.equal(newPassword.status, 200);
+  });
+
+  it("rejects password reset when account details do not match", async () => {
+    await post("signup", {
+      username: "reset_operator",
+      email: "reset@example.com",
+      password: PASSWORD,
+    });
+
+    const response = await post("reset-password", {
+      username: "unknown_operator",
+      email: "reset@example.com",
+      newPassword: "another-safe-password",
+    });
+    assert.equal(response.status, 401);
+    assert.equal(
+      (await response.json()).error,
+      "Username and email do not match an account.",
+    );
+  });
+
+  it("updates password using matching account details and revokes sessions", async () => {
+    const signup = await post("signup", {
+      username: "reset_operator",
+      email: "reset@example.com",
+      password: PASSWORD,
+    });
+    assert.equal(sessions.documents.length, 1);
+    const response = await post("reset-password", {
+      username: "RESET_OPERATOR",
+      email: "RESET@example.com",
+      newPassword: "another-safe-password",
+    });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("set-cookie"), /Max-Age=0/);
+    assert.equal(sessions.documents.length, 0);
+
+    const oldPassword = await post("signin", {
+      username: "reset_operator",
+      email: "reset@example.com",
+      password: PASSWORD,
+    });
+    const newPassword = await post("signin", {
+      username: "reset_operator",
+      email: "reset@example.com",
+      password: "another-safe-password",
+    });
+    assert.equal(oldPassword.status, 401);
+    assert.equal(newPassword.status, 200);
+    assert.equal(users.documents[0].email, "reset@example.com");
+  });
+
   it("rejects malformed and oversized request bodies", async () => {
     const malformed = await fetch(`${baseUrl}/api/auth/signup`, {
       method: "POST",
       headers: { Origin: FRONTEND_ORIGIN, "Content-Type": "application/json" },
       body: "{",
     });
-    const oversized = await post("signup", "x".repeat(17_000));
+    const oversized = await post("signup", "x".repeat(2 * 1024 * 1024 + 1));
 
     assert.equal(malformed.status, 400);
     assert.equal(oversized.status, 413);

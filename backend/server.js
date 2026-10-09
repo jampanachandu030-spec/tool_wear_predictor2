@@ -2,7 +2,7 @@ import "dotenv/config";
 
 import { createServer } from "node:http";
 import { promisify } from "node:util";
-import { randomBytes, scrypt, timingSafeEqual, createHash } from "node:crypto";
+import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { MongoClient } from "mongodb";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -13,7 +13,8 @@ const SESSION_LENGTH_MS = 24 * 60 * 60 * 1000;
 const REMEMBERED_SESSION_LENGTH_MS = 30 * 24 * 60 * 60 * 1000;
 const SCRYPT_OPTIONS = { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const PASSWORD_LENGTH = 64;
-const MAX_BODY_BYTES = 16 * 1024;
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
+const MAX_PROFILE_PHOTO_BYTES = 1024 * 1024;
 const MAX_REQUEST_BODY_TIME_MS = 15_000;
 const ROLES = new Set([
   "Lead CNC Machinist",
@@ -94,7 +95,38 @@ function profileFor(user) {
     username: user.username,
     email: user.email,
     role: user.role,
+    ...(typeof user.profilePhoto === "string"
+      ? { profilePhoto: user.profilePhoto }
+      : {}),
   };
+}
+
+function validateProfilePhoto(photo) {
+  if (photo === null) return null;
+  if (typeof photo !== "string") {
+    throw new RequestValidationError("Choose a valid profile photo.");
+  }
+
+  const match =
+    /^data:image\/(png|jpeg|webp);base64,([A-Za-z\d+/]+={0,2})$/.exec(photo);
+  if (!match) {
+    throw new RequestValidationError(
+      "Profile photos must be PNG, JPEG, or WebP images.",
+    );
+  }
+  const encodedImage = match[2];
+  const padding = encodedImage.endsWith("==")
+    ? 2
+    : encodedImage.endsWith("=")
+      ? 1
+      : 0;
+  const imageBytes = Math.floor((encodedImage.length * 3) / 4) - padding;
+  if (imageBytes < 1 || imageBytes > MAX_PROFILE_PHOTO_BYTES) {
+    throw new RequestValidationError(
+      "Profile photos must be smaller than 1 MB.",
+    );
+  }
+  return photo;
 }
 
 function cookieHeader(
@@ -201,7 +233,7 @@ export function createAuthServer({
           "Access-Control-Allow-Origin": origin,
           "Access-Control-Allow-Credentials": "true",
           "Access-Control-Allow-Headers": "Content-Type",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
           Vary: "Origin",
         }
       : {};
@@ -264,6 +296,285 @@ export function createAuthServer({
       if (request.method === "POST" && url.pathname === "/api/auth/signout") {
         const token = sessionToken(request);
         if (token) await sessions.deleteOne({ tokenHash: tokenHash(token) });
+        sendJson(
+          response,
+          200,
+          { success: true },
+          {
+            ...corsHeaders,
+            "Set-Cookie": cookieHeader("", { secureCookies, clear: true }),
+          },
+        );
+        return;
+      }
+
+      if (request.method === "PATCH" && url.pathname === "/api/auth/profile") {
+        const token = sessionToken(request);
+        if (!token) {
+          sendJson(
+            response,
+            401,
+            { error: "Sign in to update your profile." },
+            corsHeaders,
+          );
+          return;
+        }
+        const session = await sessions.findOne({
+          tokenHash: tokenHash(token),
+          expiresAt: { $gt: new Date() },
+        });
+        if (!session) {
+          sendJson(
+            response,
+            401,
+            { error: "Your session has expired. Please sign in again." },
+            corsHeaders,
+          );
+          return;
+        }
+
+        const body = await readJson(request);
+        if (typeof body !== "object" || body === null || Array.isArray(body)) {
+          throw new RequestValidationError("Enter valid profile details.");
+        }
+        const username =
+          typeof body.username === "string" ? body.username.trim() : "";
+        const email =
+          typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+        const hasProfilePhoto = Object.hasOwn(body, "profilePhoto");
+        const profilePhoto = hasProfilePhoto
+          ? validateProfilePhoto(body.profilePhoto)
+          : undefined;
+        if (username.length < 3 || username.length > 40) {
+          sendJson(
+            response,
+            400,
+            { error: "Username must be between 3 and 40 characters." },
+            corsHeaders,
+          );
+          return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+          sendJson(
+            response,
+            400,
+            { error: "Please enter a valid email address." },
+            corsHeaders,
+          );
+          return;
+        }
+        try {
+          const updates = {
+            username,
+            usernameNormalized: username.toLowerCase(),
+            email,
+            ...(typeof profilePhoto === "string" ? { profilePhoto } : {}),
+          };
+          const update = {
+            $set: updates,
+            ...(profilePhoto === null ? { $unset: { profilePhoto: "" } } : {}),
+          };
+          await users.updateOne({ _id: session.userId }, update);
+        } catch (error) {
+          if (error?.code === 11000) {
+            const field = error.keyPattern?.email ? "email" : "username";
+            sendJson(
+              response,
+              409,
+              {
+                error:
+                  field === "email"
+                    ? "That email address is already in use."
+                    : "That username is already taken.",
+              },
+              corsHeaders,
+            );
+            return;
+          }
+          throw error;
+        }
+        const user = await users.findOne({ _id: session.userId });
+        if (!user) {
+          sendJson(
+            response,
+            401,
+            { error: "Your account could not be found." },
+            corsHeaders,
+          );
+          return;
+        }
+        sendJson(response, 200, { user: profileFor(user) }, corsHeaders);
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/api/auth/change-password"
+      ) {
+        const token = sessionToken(request);
+        const activeSession = token
+          ? await sessions.findOne({
+              tokenHash: tokenHash(token),
+              expiresAt: { $gt: new Date() },
+            })
+          : null;
+        if (!activeSession) {
+          sendJson(
+            response,
+            401,
+            { error: "Sign in to change your password." },
+            corsHeaders,
+          );
+          return;
+        }
+
+        const body = await readJson(request);
+        if (typeof body !== "object" || body === null || Array.isArray(body)) {
+          throw new RequestValidationError("Enter valid password details.");
+        }
+        const newPassword =
+          typeof body.newPassword === "string" ? body.newPassword : "";
+        if (newPassword.length < 8 || newPassword.length > 256) {
+          sendJson(
+            response,
+            400,
+            { error: "New password must be between 8 and 256 characters." },
+            corsHeaders,
+          );
+          return;
+        }
+
+        const user = await users.findOne({ _id: activeSession.userId });
+        if (!user) {
+          sendJson(
+            response,
+            401,
+            { error: "Your account could not be found." },
+            corsHeaders,
+          );
+          return;
+        }
+        if (
+          (await verifyPassword(
+            newPassword,
+            user.passwordHash,
+            user.passwordSalt,
+          ))
+        ) {
+          sendJson(
+            response,
+            400,
+            {
+              error:
+                "Choose a new password different from your existing password.",
+            },
+            corsHeaders,
+          );
+          return;
+        }
+
+        const passwordFields = await hashPassword(newPassword);
+        const updateResult = await users.updateOne(
+          { _id: user._id },
+          { $set: passwordFields, $unset: { recoveryCodeHash: "" } },
+        );
+        if (updateResult.modifiedCount !== 1) {
+          sendJson(
+            response,
+            409,
+            { error: "Your password could not be updated. Please try again." },
+            corsHeaders,
+          );
+          return;
+        }
+        await sessions.deleteMany({ userId: user._id });
+        sendJson(
+          response,
+          200,
+          { success: true },
+          {
+            ...corsHeaders,
+            "Set-Cookie": cookieHeader("", {
+              secureCookies,
+              clear: true,
+            }),
+          },
+        );
+        return;
+      }
+
+      if (
+        request.method === "POST" &&
+        url.pathname === "/api/auth/reset-password"
+      ) {
+        const body = await readJson(request);
+        if (typeof body !== "object" || body === null || Array.isArray(body)) {
+          throw new RequestValidationError("Enter your account details and a new password.");
+        }
+        const username =
+          typeof body.username === "string" ? body.username.trim() : "";
+        const email =
+          typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+        const newPassword =
+          typeof body.newPassword === "string" ? body.newPassword : "";
+        if (
+          username.length < 3 ||
+          username.length > 40 ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+          email.length > 254 ||
+          newPassword.length < 8 ||
+          newPassword.length > 256
+        ) {
+          throw new RequestValidationError(
+            "Enter a valid username and email, and a password between 8 and 256 characters.",
+          );
+        }
+
+        const user = await users.findOne({
+          usernameNormalized: username.toLowerCase(),
+          email,
+        });
+        if (!user) {
+          sendJson(
+            response,
+            401,
+            { error: "Username and email do not match an account." },
+            corsHeaders,
+          );
+          return;
+        }
+
+        if (
+          await verifyPassword(
+            newPassword,
+            user.passwordHash,
+            user.passwordSalt,
+          )
+        ) {
+          sendJson(
+            response,
+            400,
+            { error: "Choose a new password different from your existing password." },
+            corsHeaders,
+          );
+          return;
+        }
+
+        const passwordFields = await hashPassword(newPassword);
+        const updateResult = await users.updateOne(
+          { _id: user._id },
+          { $set: passwordFields, $unset: { recoveryCodeHash: "" } },
+        );
+        if (updateResult.modifiedCount !== 1) {
+          sendJson(
+            response,
+            409,
+            { error: "Your password could not be updated. Please try again." },
+            corsHeaders,
+          );
+          return;
+        }
+        await sessions.deleteMany({ userId: user._id });
         sendJson(
           response,
           200,
@@ -442,7 +753,11 @@ async function start() {
       .map((origin) => origin.trim())
       .filter(Boolean),
   );
-  const server = createAuthServer({ users, sessions, allowedOrigins });
+  const server = createAuthServer({
+    users,
+    sessions,
+    allowedOrigins,
+  });
   const port = Number(process.env.PORT ?? 3001);
   server.requestTimeout = MAX_REQUEST_BODY_TIME_MS;
   server.headersTimeout = MAX_REQUEST_BODY_TIME_MS + 5_000;
